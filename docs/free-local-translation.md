@@ -76,6 +76,11 @@ These affect the existing `Custom` translator, not just the free setup:
 
 - **`Custom` no longer requires signing in.** It uses your own endpoint, so it
   is validated before the login gate and consumes no credits.
+- **Local OCR engines no longer require signing in either.** The bundled
+  default OCR, manga-ocr and Pororo run on your machine, so they are allowed
+  while logged out. Only the remote options served through your credits
+  (Gemini-2.5-Flash-Lite and Microsoft OCR) still need a session. Without this,
+  OCR was validated *before* the translator and blocked the whole pipeline.
 - **The API Key became optional**; `api_url` and `model` alone are enough, and
   an empty `api_url` is fine when a local server is running.
 - **Page images are no longer sent** to `Custom` by default. Most free and local
@@ -119,6 +124,9 @@ fake HTTP proxy, both on loopback:
 - retry across a `429`, and `max_completion_tokens` → `max_tokens` fallback
 - JSON repair across fenced, prose-wrapped, and otherwise malformed responses
 - settings round-trip and the Test Connection success and failure paths
+- a logged-out user with local OCR and `Custom` passing the full pipeline
+  validation, while account-backed OCR and credit-based translators are still
+  refused
 
 ## Limitations
 

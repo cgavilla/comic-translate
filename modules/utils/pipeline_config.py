@@ -7,6 +7,7 @@ from modules.inpainting.mi_gan import MIGAN
 from modules.inpainting.aot import AOT
 from modules.inpainting.schema import Config
 from modules.utils.local_llm import resolve_endpoint
+from modules.ocr.user_ocr import UserOCR
 from app.ui.messages import Messages
 from app.ui.settings.settings_page import SettingsPage
 
@@ -18,6 +19,10 @@ inpaint_map = {
     "MI-GAN": MIGAN,
     "AOT": AOT,
 }
+
+# OCR options that are served by the user's account and therefore need a
+# session. Everything else is a local engine.
+ACCOUNT_OCR_KEYS = UserOCR.LLM_OCR_KEYS | UserOCR.FULL_PAGE_OCR_KEYS
 
 
 def get_inpainter_backend(inpainter_key: str) -> str:
@@ -36,22 +41,26 @@ def get_config(settings_page: SettingsPage):
 
     return config
 
+
 def validate_ocr(main: ComicTranslate):
-    """Ensure either API credentials are set or the user is authenticated."""
+    """Ensure the selected OCR tool is usable.
+
+    The bundled local engines (default OCR, manga-ocr, Pororo...) run locally
+    and need no account. Only the remote options proxied through the user's
+    credits require a session.
+    """
     settings_page = main.settings_page
-    tr = settings_page.ui.tr
     settings = settings_page.get_all_settings()
-    credentials = settings.get('credentials', {})
     ocr_tool = settings['tools']['ocr']
 
     if not ocr_tool:
         Messages.show_missing_tool_error(main, QCoreApplication.translate("Messages", "Text Recognition model"))
         return False
-    
-    if not settings_page.is_logged_in():
+
+    if not settings_page.is_logged_in() and ocr_tool in ACCOUNT_OCR_KEYS:
         Messages.show_not_logged_in_error(main)
         return False
-        
+
     return True
 
 
@@ -75,8 +84,8 @@ def validate_translator(main: ComicTranslate, target_lang: str):
         creds = credentials.get(service, {})
         # api_key is optional: local servers ignore it and free tiers differ.
         # An empty api_url is fine too - a local server is auto-detected. This
-        # runs on the UI thread, so the discovery timeout is kept tight; a
-        # closed local port is refused immediately anyway.
+        # runs on the UI thread, so discovery uses a tight timeout: a closed
+        # local port is not always refused instantly.
         if creds.get('model') and resolve_endpoint(creds.get('api_url'),
                                                    timeout=0.25)[0]:
             return True
