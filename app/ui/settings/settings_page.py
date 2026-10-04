@@ -381,6 +381,12 @@ class SettingsPage(QtWidgets.QWidget):
                     creds['model'] = combo.currentText()
                 widget = self.ui.credential_widgets.get("Custom_supports_images")
                 creds['supports_images'] = bool(widget.isChecked()) if widget else False
+            elif normalized == "Microsoft Azure":
+                # The Azure OCR widgets use their own field names.
+                creds['api_key_ocr'] = _text_or_none("Microsoft Azure_api_key_ocr")
+                creds['endpoint'] = _text_or_none("Microsoft Azure_endpoint")
+                # The validation layer looks for a plain 'api_key'.
+                creds['api_key'] = creds['api_key_ocr']
             else:
                 # Every other service just needs its own key, which is what
                 # lets the built-in engines run without an account.
@@ -531,6 +537,11 @@ class SettingsPage(QtWidgets.QWidget):
                     settings.setValue(f"{translated_service}_temperature", cred.get('temperature') or '')
                     settings.setValue(f"{translated_service}_supports_images",
                                       bool(cred.get('supports_images')))
+                elif translated_service == "Microsoft Azure":
+                    settings.setValue(f"{translated_service}_api_key_ocr",
+                                      cred.get('api_key_ocr') or '')
+                    settings.setValue(f"{translated_service}_endpoint",
+                                      cred.get('endpoint') or '')
                 else:
                     key = cred.get('api_key')
                     if key:
@@ -664,6 +675,11 @@ class SettingsPage(QtWidgets.QWidget):
                     self.ui.credential_widgets[f"{translated_service}_temperature"].setText(settings.value(f"{translated_service}_temperature", ''))
                     self.ui.credential_widgets[f"{translated_service}_supports_images"].setChecked(
                         settings.value(f"{translated_service}_supports_images", False, type=bool))
+                elif translated_service == "Microsoft Azure":
+                    self.ui.credential_widgets["Microsoft Azure_api_key_ocr"].setText(
+                        settings.value("Microsoft Azure_api_key_ocr", ''))
+                    self.ui.credential_widgets["Microsoft Azure_endpoint"].setText(
+                        settings.value("Microsoft Azure_endpoint", ''))
                 else:
                     widget = self.ui.credential_widgets.get(f"{translated_service}_api_key")
                     if widget is not None:

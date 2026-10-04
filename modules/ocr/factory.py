@@ -61,7 +61,7 @@ class OCRFactory:
 
         # 2) For account holders using a remote  model
         token = get_token("access_token")
-        if token and (
+        if token and not cls._has_own_key(settings, ocr_model) and (
             ocr_model in UserOCR.LLM_OCR_KEYS
             or ocr_model in UserOCR.FULL_PAGE_OCR_KEYS
         ):
@@ -102,6 +102,13 @@ class OCRFactory:
         extras = {}
 
         creds = settings.get_credentials(ocr_key)
+        # ocr_key is the option name ("Microsoft OCR"), not the credential
+        # service ("Microsoft Azure"). Resolve it so a changed key actually
+        # invalidates the cached engine.
+        own_service = cls._own_key_service(ocr_key)
+        if own_service:
+            creds = dict(creds or {})
+            creds["own"] = settings.get_credentials(settings.ui.tr(own_service))
         device = resolve_device(settings.is_gpu_enabled(), effective_backend)
 
         if creds:
@@ -132,6 +139,30 @@ class OCRFactory:
 
         # Append the fingerprint
         return f"{base}_{digest}"
+
+    @classmethod
+    def _own_key_service(cls, ocr_model: str) -> str | None:
+        """Credential service holding this OCR option's own key, if any."""
+        return {
+            "Gemini-2.5-Flash-Lite": "Google Gemini",
+            "Microsoft OCR": "Microsoft Azure",
+        }.get(ocr_model)
+
+    @classmethod
+    def _has_own_key(cls, settings, ocr_model: str) -> bool:
+        """True when the user configured their own key for this OCR provider.
+
+        A supplied key means they are paying their own way, so the account's
+        credits proxy must not swallow the request.
+        """
+        service = {
+            "Gemini-2.5-Flash-Lite": "Google Gemini",
+            "Microsoft OCR": "Microsoft Azure",
+        }.get(ocr_model)
+        if not service:
+            return False
+        creds = settings.get_credentials(settings.ui.tr(service))
+        return bool((creds.get('api_key') or '').strip())
 
     @classmethod
     def _resolve_backend(cls, backend: str | None = None) -> str:

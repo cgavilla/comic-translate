@@ -36,6 +36,16 @@ class TranslationFactory:
     }
     
     DEFAULT_LLM_ENGINE = GPTTranslation
+
+    # Providers whose own API key can be entered in Settings > Advanced. When
+    # the user supplied one they are paying their own way, so their key must
+    # win over the account's credits.
+    OWN_KEY_SERVICES = {
+        "GPT": "Open AI GPT",
+        "Claude": "Anthropic Claude",
+        "Gemini": "Google Gemini",
+        "Deepseek": "Deepseek",
+    }
     
     @classmethod
     def create_engine(cls, settings, source_lang: str, target_lang: str, translator_key: str) -> TranslationEngine:
@@ -59,7 +69,7 @@ class TranslationFactory:
             return cls._engines[cache_key]
         
         # Determine engine class and create engine
-        engine_class = cls._get_engine_class(translator_key)
+        engine_class = cls._get_engine_class(settings, translator_key)
         engine = engine_class()
         
         # Initialize with appropriate parameters
@@ -74,11 +84,25 @@ class TranslationFactory:
     
 
     @classmethod
-    def _get_engine_class(cls, translator_key: str):
+    def _has_own_key(cls, settings, translator_key: str) -> bool:
+        """True when the user configured their own API key for this provider."""
+        for identifier, service in cls.OWN_KEY_SERVICES.items():
+            if identifier in translator_key:
+                creds = settings.get_credentials(settings.ui.tr(service))
+                if (creds.get('api_key') or '').strip():
+                    return True
+        return False
+
+    @classmethod
+    def _get_engine_class(cls, settings, translator_key: str):
         """Get the appropriate engine class based on translator key."""
 
         access_token = get_token("access_token")
-        if access_token and translator_key not in ['Custom']:
+        # The credits proxy only applies when the user has no key of their own.
+        # Routing around a supplied key is what turns a free setup into a
+        # login/credits prompt.
+        if access_token and translator_key not in ['Custom'] \
+                and not cls._has_own_key(settings, translator_key):
             return UserTranslator
 
         # First check if it's a traditional translation engine (exact match)
@@ -93,6 +117,14 @@ class TranslationFactory:
         # Default to LLM engine if no match found
         return cls.DEFAULT_LLM_ENGINE
     
+    @classmethod
+    def _own_key_service(cls, translator_key: str) -> str | None:
+        """Credential service holding this translator's own key, if any."""
+        for identifier, service in cls.OWN_KEY_SERVICES.items():
+            if identifier in translator_key:
+                return service
+        return None
+
     @classmethod
     def _create_cache_key(cls, translator_key: str,
                         source_lang: str,
@@ -115,8 +147,15 @@ class TranslationFactory:
         # Gather any dynamic bits we care about:
         extras = {}
 
-        # Always grab credentials for this service (if any)
+        # Always grab credentials for this service (if any). The translator key is
+        # the *option* name ("GPT-4.1"), not the credential service
+        # ("Open AI GPT"), so resolve it before looking anything up -
+        # otherwise a changed API key leaves a stale engine cached.
         creds = settings.get_credentials(translator_key)
+        own_service = cls._own_key_service(translator_key)
+        if own_service:
+            creds = dict(creds or {})
+            creds["own"] = settings.get_credentials(settings.ui.tr(own_service))
         if creds:
             extras["credentials"] = creds
 

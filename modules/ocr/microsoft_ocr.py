@@ -24,8 +24,14 @@ class MicrosoftOCR(OCREngine):
             **kwargs: Additional parameters (ignored)
         """
 
-        from azure.ai.vision.imageanalysis import ImageAnalysisClient
-        from azure.core.credentials import AzureKeyCredential
+        try:
+            from azure.ai.vision.imageanalysis import ImageAnalysisClient
+            from azure.core.credentials import AzureKeyCredential
+        except ImportError as exc:
+            raise ImportError(
+                "Microsoft OCR needs the optional Azure SDK. Install it with:\n"
+                "    pip install azure-ai-vision-imageanalysis"
+            ) from exc
 
         self.api_key = api_key
         self.endpoint = endpoint
