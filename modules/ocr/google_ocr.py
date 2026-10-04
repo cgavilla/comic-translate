@@ -3,6 +3,7 @@ import numpy as np
 import requests
 
 from .base import OCREngine
+from ..utils import http_client
 from ..utils.textblock import TextBlock
 from ..utils.textblock import lists_to_blk_list
 
@@ -36,11 +37,12 @@ class GoogleOCR(OCREngine):
         }
         
         headers = {"Content-Type": "application/json"}
-        response = requests.post(
+        response = http_client.request(
+            "POST",
             "https://vision.googleapis.com/v1/images:annotate",
             headers=headers,
             params={"key": self.api_key},
-            data=json.dumps(payload),
+            json_body=payload,
             timeout=10
         )
         

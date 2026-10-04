@@ -46,8 +46,9 @@ class CustomTranslation(GPTTranslation):
             credentials.get('api_url') or '')
 
         # Free/local servers are text-only by default; sending a page image
-        # makes most of them reject the request outright.
-        self.supports_images = False
+        # makes most of them reject the request outright. Opt in explicitly
+        # for vision-capable endpoints.
+        self.supports_images = bool(credentials.get('supports_images'))
 
         # Most OpenAI-compatible servers only know the legacy token field.
         self.token_param = "max_tokens"

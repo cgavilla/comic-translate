@@ -3,6 +3,7 @@ import numpy as np
 import requests
 
 from .base import BaseLLMTranslation
+from ...utils import http_client
 from ...utils.translator_utils import MODEL_MAP
 
 
@@ -106,11 +107,9 @@ class GeminiTranslation(BaseLLMTranslation):
         headers = {
             "Content-Type": "application/json"
         }
-        
-        response = requests.post(
-            url, 
-            headers=headers, 
-            json=payload,
+
+        response = http_client.request(
+            "POST", url, headers=headers, json_body=payload,
             timeout=self.timeout
         )
         

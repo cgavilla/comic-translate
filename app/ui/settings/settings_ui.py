@@ -66,7 +66,12 @@ class SettingsPageUI(QtWidgets.QWidget):
         self.alignment = [self.tr("Left"), self.tr("Center"), self.tr("Right")]
 
         self.credential_services = [
-            self.tr("Custom"), 
+            self.tr("Custom"),
+            self.tr("Open AI GPT"),
+            self.tr("Anthropic Claude"),
+            self.tr("Google Gemini"),
+            self.tr("Deepseek"),
+            self.tr("Microsoft Azure"),
         ]
         
         self.supported_translators = [
@@ -256,6 +261,10 @@ class SettingsPageUI(QtWidgets.QWidget):
         self.network_widgets = self.credentials_page.network_widgets
         self.test_connection_button = self.credentials_page.test_connection_button
         self.test_connection_label = self.credentials_page.test_connection_label
+        self.custom_refresh_models_button = \
+            self.credential_widgets["Custom_refresh_models"]
+        self.custom_models_combo = self.credential_widgets["Custom_models_combo"]
+        self.custom_supports_images = self.credential_widgets["Custom_supports_images"]
 
         # LLMs
         self.image_checkbox = self.llms_page.image_checkbox

@@ -7,6 +7,7 @@ import time
 from typing import Any, List, Optional
 
 from .base import TranslationEngine
+from ..utils import http_client
 from modules.utils.textblock import TextBlock 
 from modules.utils.language_utils import resolve_auto_source_language
 
@@ -154,10 +155,10 @@ class UserTranslator(TranslationEngine):
             "X-Client-OS": client_os
         }
 
-        response = self._session.post(
-            self.api_url, 
-            headers=headers, 
-            json=request_payload, 
+        response = http_client.request(
+            "POST", self.api_url,
+            headers=headers,
+            json_body=request_payload,
             timeout=120
         ) 
         after_request_t = time.perf_counter()

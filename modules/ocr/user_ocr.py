@@ -4,7 +4,8 @@ import logging
 import time
 from typing import Any, List, Optional, Dict
 
-from .base import OCREngine 
+from .base import OCREngine
+from ..utils import http_client
 from ..utils.textblock import TextBlock 
 from ..utils.textblock import lists_to_blk_list
 from ..utils.textblock import adjust_text_line_coordinates
@@ -207,11 +208,11 @@ class UserOCR(OCREngine):
 
         # 4. Send Single Request
         before_http_t = time.perf_counter()
-        response = self._session.post(
-            self.api_url,
+        response = http_client.request(
+            "POST", self.api_url,
             headers=headers,
-            json=payload,
-            timeout=120  
+            json_body=payload,
+            timeout=120
         )
         after_http_t = time.perf_counter()
         try:
@@ -318,16 +319,14 @@ class UserOCR(OCREngine):
             "ocr_name": self.ocr_key,
             "image_base64": img_b64,
             "source_language": api_source_language 
-        }
-
-        # Single API call for the whole page
+        }# Single API call for the whole page
         before_http_t = time.perf_counter()
-        response = self._session.post(
-            self.api_url, 
-            headers=headers, 
-            json=payload, 
+        response = http_client.request(
+            "POST", self.api_url,
+            headers=headers,
+            json_body=payload,
             timeout=120
-        ) 
+        )
         after_http_t = time.perf_counter()
         try:
             response.raise_for_status()

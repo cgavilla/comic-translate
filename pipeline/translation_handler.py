@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 from modules.translation.processor import Translator
-from modules.utils.translator_utils import set_upper_case
+from modules.utils.translator_utils import has_translatable_content, set_upper_case
 from modules.utils.language_utils import to_canonical_language_name
 from pipeline.webtoon_utils import filter_and_convert_visible_blocks, restore_original_block_coordinates
 from .cache_manager import CacheManager
@@ -103,18 +103,46 @@ class TranslationHandler:
                     
                     set_upper_case([blk], upper_case)
             else:
-                # For full page translation, check if we can use cached results
-                if self.cache_manager._can_serve_all_blocks_from_translation_cache(translation_cache_key, self.main_page.blk_list):
-                    # All blocks can be served from cache with matching source text
-                    self.cache_manager._apply_cached_translations_to_blocks(translation_cache_key, self.main_page.blk_list)
-                    logger.info(f"Using cached translation results for all {len(self.main_page.blk_list)} blocks")
-                else:
-                    # Need to run translation and cache results
-                    translator.translate(self.main_page.blk_list, image, extra_context)
-                    self.cache_manager._cache_translation_results(translation_cache_key, self.main_page.blk_list)
-                    logger.info("Translation completed and cached for %d blocks", len(self.main_page.blk_list))
-                
-                set_upper_case(self.main_page.blk_list, upper_case)
+                # Serve whatever is already cached and only translate what is
+                # missing. A page that failed halfway (rate limit, dropped
+                # connection) otherwise throws away every block it did finish.
+                blocks = self.main_page.blk_list
+                cached_blocks, pending_blocks = self._split_cached_blocks(
+                    translation_cache_key, blocks)
+
+                if cached_blocks:
+                    logger.info("Reusing %d cached block translations",
+                                len(cached_blocks))
+                for blk in cached_blocks:
+                    blk.translation = self.cache_manager._get_cached_translation_for_block(
+                        translation_cache_key, blk)
+
+                if pending_blocks:
+                    logger.info("Translating %d of %d blocks",
+                                len(pending_blocks), len(blocks))
+                    translator.translate(pending_blocks, image, extra_context)
+                    # Merge per block: replacing the whole entry would drop the
+                    # blocks just reused from cache.
+                    for blk in pending_blocks:
+                        self.cache_manager.update_translation_cache_for_block(
+                            translation_cache_key, blk)
+
+                set_upper_case(blocks, upper_case)
+
+    def _split_cached_blocks(self, cache_key, blocks):
+        """Split blocks into those served from cache and those needing translation."""
+        if not self.cache_manager._is_translation_cached(cache_key):
+            return [], list(blocks)
+
+        cached, pending = [], []
+        for blk in blocks:
+            if not has_translatable_content(getattr(blk, "text", "")):
+                continue
+            if self.cache_manager._get_cached_translation_for_block(cache_key, blk):
+                cached.append(blk)
+            else:
+                pending.append(blk)
+        return cached, pending
 
     def translate_webtoon_visible_area(self, single_block=False):
         """Perform translation on the visible area in webtoon mode."""

@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 from packaging import version
 from PySide6.QtCore import QObject, Signal, QThread, QStandardPaths
+
+from modules.utils import http_client
 from app.version import __version__
 
 logger = logging.getLogger(__name__)
@@ -113,7 +115,7 @@ class UpdateWorker(QObject):
     def run(self):
         try:
             url = f"https://api.github.com/repos/{self.owner}/{self.repo}/releases/latest"
-            response = requests.get(url, timeout=10)
+            response = http_client.request("GET", url, timeout=10, retries=1)
             response.raise_for_status()
             data = response.json()
             
@@ -175,7 +177,7 @@ class DownloadWorker(QObject):
 
             save_path = os.path.join(download_dir, self.filename)
             
-            response = requests.get(self.url, stream=True, timeout=30)
+            response = http_client.request("GET", self.url, stream=True, timeout=30, retries=1)
             response.raise_for_status()
             
             total_size = int(response.headers.get('content-length', 0))

@@ -8,6 +8,9 @@ fallback when no local server is running.
 
 from __future__ import annotations
 
+import threading
+import time
+
 import requests
 
 from .http_client import HttpError, get_json, is_loopback, list_models
@@ -59,6 +62,34 @@ def detect_local_endpoint(timeout: float = DISCOVERY_TIMEOUT) -> str | None:
     return None
 
 
+# Discovery is probed both when validating settings and again when the engine
+# initialises. Remembering the answer briefly keeps that from costing two
+# round of socket timeouts at the start of every translation.
+_discovery_cache: tuple[float, str | None] | None = None
+_discovery_lock = threading.Lock()
+DISCOVERY_CACHE_TTL = 20.0
+
+
+def detect_local_endpoint_cached(ttl: float = DISCOVERY_CACHE_TTL) -> str | None:
+    """:func:`detect_local_endpoint`, memoised for a short while."""
+    global _discovery_cache
+    now = time.monotonic()
+    with _discovery_lock:
+        if _discovery_cache is not None and now - _discovery_cache[0] < ttl:
+            return _discovery_cache[1]
+    found = detect_local_endpoint()
+    with _discovery_lock:
+        _discovery_cache = (time.monotonic(), found)
+    return found
+
+
+def invalidate_discovery_cache() -> None:
+    """Forget the memoised discovery result (used by the Test Connection button)."""
+    global _discovery_cache
+    with _discovery_lock:
+        _discovery_cache = None
+
+
 def resolve_endpoint(configured: str = "",
                      timeout: float = DISCOVERY_TIMEOUT) -> tuple[str, str]:
     """Pick the endpoint to talk to, preferring the user's explicit choice.
@@ -78,7 +109,10 @@ def resolve_endpoint(configured: str = "",
                                f"Using {found} instead.")
         return configured, f"Using endpoint {configured}"
 
-    found = detect_local_endpoint(timeout)
+    # Only reuse the memoised answer when the caller wants the default budget;
+    # a tighter timeout means they want a fresh probe.
+    ttl = DISCOVERY_CACHE_TTL if timeout == DISCOVERY_TIMEOUT else 0.0
+    found = detect_local_endpoint_cached(ttl)
     if found:
         return found, f"Detected local model server at {found}"
     return "", ("No local model server found. Set an Endpoint URL to use a "

@@ -24,6 +24,30 @@ inpaint_map = {
 # session. Everything else is a local engine.
 ACCOUNT_OCR_KEYS = UserOCR.LLM_OCR_KEYS | UserOCR.FULL_PAGE_OCR_KEYS
 
+# Which credential service holds the user's own API key for each hosted
+# option. Supplying one of these lets the engine run without an account, so
+# signing in is never mandatory.
+OWN_KEY_SERVICES = {
+    "GPT-4.1": "Open AI GPT",
+    "GPT-4.1-mini": "Open AI GPT",
+    "Claude-4.6-Sonnet": "Anthropic Claude",
+    "Claude-4.5-Haiku": "Anthropic Claude",
+    "Gemini-3.1-Flash-Lite": "Google Gemini",
+    "Gemini-2.5-Pro": "Google Gemini",
+    "Deepseek": "Deepseek",
+    "Microsoft OCR": "Microsoft Azure",
+    "Gemini-2.5-Flash-Lite": "Google Gemini",
+}
+
+
+def has_own_key(settings_page: SettingsPage, option: str) -> bool:
+    """True when the user configured their own API key for ``option``."""
+    service = OWN_KEY_SERVICES.get(option)
+    if not service:
+        return False
+    creds = settings_page.get_credentials(settings_page.ui.tr(service))
+    return bool((creds.get('api_key') or '').strip())
+
 
 def get_inpainter_backend(inpainter_key: str) -> str:
     inpainter_cls = inpaint_map[inpainter_key]
@@ -58,8 +82,10 @@ def validate_ocr(main: ComicTranslate):
         return False
 
     if not settings_page.is_logged_in() and ocr_tool in ACCOUNT_OCR_KEYS:
-        Messages.show_not_logged_in_error(main)
-        return False
+        # The user's own key needs no account.
+        if not has_own_key(settings_page, ocr_tool):
+            Messages.show_not_logged_in_error(main)
+            return False
 
     return True
 
@@ -91,6 +117,10 @@ def validate_translator(main: ComicTranslate, target_lang: str):
             return True
         Messages.show_custom_not_configured_error(main)
         return False
+
+    # A user who brought their own API key needs no account either.
+    if has_own_key(settings_page, translator_tool):
+        return True
 
     if not settings_page.is_logged_in():
         Messages.show_not_logged_in_error(main)

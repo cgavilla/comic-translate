@@ -3,6 +3,7 @@ from ..dayu_widgets.label import MLabel
 from ..dayu_widgets.line_edit import MLineEdit
 from ..dayu_widgets.check_box import MCheckBox
 from ..dayu_widgets.push_button import MPushButton
+from ..dayu_widgets.combo_box import MComboBox
 from .utils import set_label_width
 
 class CredentialsPage(QtWidgets.QWidget):
@@ -123,6 +124,28 @@ class CredentialsPage(QtWidgets.QWidget):
                 temperature_input.set_prefix_widget(temperature_prefix)
                 service_layout.addWidget(temperature_input)
                 self.credential_widgets[f"{normalized}_temperature"] = temperature_input
+
+                models_row = QtWidgets.QHBoxLayout()
+                refresh_models_button = MPushButton(self.tr("List Models"))
+                refresh_models_button.setFixedWidth(150)
+                models_row.addWidget(refresh_models_button)
+                models_row.addStretch(1)
+                service_layout.addLayout(models_row)
+                self.credential_widgets[f"{normalized}_refresh_models"] = refresh_models_button
+
+                models_combo = MComboBox()
+                models_combo.setFixedWidth(400)
+                models_combo.setEditable(True)
+                models_combo.setPlaceholderText(self.tr("Model names offered by the endpoint"))
+                service_layout.addWidget(models_combo)
+                self.credential_widgets[f"{normalized}_models_combo"] = models_combo
+
+                vision_checkbox = MCheckBox(self.tr("Endpoint accepts images"))
+                vision_checkbox.setToolTip(self.tr(
+                    "Most local and free text-only models reject page images. Enable "
+                    "this only for vision-capable endpoints."))
+                service_layout.addWidget(vision_checkbox)
+                self.credential_widgets[f"{normalized}_supports_images"] = vision_checkbox
 
                 service_hint = MLabel(self.tr(
                     "Leave the API Key empty for a local server. If the Endpoint URL is "

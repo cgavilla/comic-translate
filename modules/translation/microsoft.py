@@ -3,6 +3,7 @@ import requests
 import uuid
 
 from .base import TraditionalTranslation
+from ..utils import http_client
 from ..utils.textblock import TextBlock
 
 
@@ -71,11 +72,11 @@ class MicrosoftTranslation(TraditionalTranslation):
                 continue
             
             # Make the request
-            response = requests.post(
-                constructed_url, 
-                headers=headers, 
-                params=params, 
-                json=body,
+            response = http_client.request(
+                "POST", constructed_url,
+                headers=headers,
+                params=params,
+                json_body=body,
                 timeout=30
             )
             response.raise_for_status()

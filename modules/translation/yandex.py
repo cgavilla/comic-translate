@@ -2,6 +2,7 @@ from typing import Any
 import requests
 
 from .base import TraditionalTranslation
+from ..utils import http_client
 from ..utils.textblock import TextBlock
 
 
@@ -50,10 +51,10 @@ class YandexTranslation(TraditionalTranslation):
             }
             
             # Make the API request
-            response = requests.post(
-                url, 
-                headers=headers, 
-                json=body,
+            response = http_client.request(
+                "POST", url,
+                headers=headers,
+                json_body=body,
                 timeout=30
             )
             response.raise_for_status()  # Raise exception for HTTP errors

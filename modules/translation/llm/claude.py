@@ -4,6 +4,7 @@ import numpy as np
 import json
 
 from .base import BaseLLMTranslation
+from ...utils import http_client
 from ...utils.translator_utils import MODEL_MAP
 
 
@@ -78,10 +79,10 @@ class ClaudeTranslation(BaseLLMTranslation):
             ]
 
         # Make the API request
-        response = requests.post(
-            self.api_url,
+        response = http_client.request(
+            "POST", self.api_url,
             headers=self.headers,
-            data=json.dumps(payload),
+            json_body=payload,
             timeout=self.timeout
         )
         

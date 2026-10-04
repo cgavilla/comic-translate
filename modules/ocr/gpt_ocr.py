@@ -3,6 +3,7 @@ import requests
 import json
 
 from .base import OCREngine
+from ..utils import http_client
 from ..utils.textblock import TextBlock, adjust_text_line_coordinates
 from ..utils.translator_utils import MODEL_MAP
 
@@ -100,10 +101,10 @@ class GPTOCR(OCREngine):
         }
         
         # Make POST request to OpenAI API
-        response = requests.post(
-            self.api_base_url,
+        response = http_client.request(
+            "POST", self.api_base_url,
             headers=headers,
-            data=json.dumps(payload),
+            json_body=payload,
             timeout=20
         )
         

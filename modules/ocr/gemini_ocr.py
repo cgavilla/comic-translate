@@ -2,6 +2,7 @@ import numpy as np
 import requests
 
 from .base import OCREngine
+from ..utils import http_client
 from ..utils.textblock import TextBlock, adjust_text_line_coordinates
 from ..utils.translator_utils import MODEL_MAP
 from app.ui.settings.settings_page import SettingsPage
@@ -125,10 +126,10 @@ class GeminiOCR(OCREngine):
         
         # Make POST request to Gemini API
         headers = {"Content-Type": "application/json"}
-        response = requests.post(
-            url,
-            headers=headers, 
-            json=payload,
+        response = http_client.request(
+            "POST", url,
+            headers=headers,
+            json_body=payload,
             timeout=20
         )
         

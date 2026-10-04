@@ -34,7 +34,10 @@ class Messages:
         MMessage.error(
             text=QCoreApplication.translate(
                 "Messages",
-                "Please sign in or sign up via Settings > Account to continue."
+                "This option is served through ComicLabs and needs an account.\n"
+                "No account is required for anything else: use a local model or a "
+                "free hosted API via the Custom translator, or paste your own API key "
+                "for this provider in Settings > Advanced."
             ),
             parent=parent,
             duration=None,

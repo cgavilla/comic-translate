@@ -46,6 +46,30 @@ class ConnectionTestWorker(QObject):
         self.finished.emit(ok, self.note, message)
 
 
+class ModelListWorker(QObject):
+    """Fetches the model list offered by an endpoint, off the UI thread."""
+
+    finished = Signal(list, str)
+
+    def __init__(self, base_url: str, api_key: str):
+        super().__init__()
+        self.base_url = base_url
+        self.api_key = api_key
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            models = http_client.list_models(self.base_url, self.api_key, timeout=8)
+        except Exception as exc:
+            self.finished.emit([], f"Could not list models: {exc}")
+            return
+        if models:
+            self.finished.emit(models, "")
+        else:
+            self.finished.emit([], self.tr(
+                "The endpoint returned no models. Enter the model name manually."))
+
+
 class SettingsPage(QtWidgets.QWidget):
     theme_changed = Signal(str)
     font_imported = Signal(str)
@@ -61,6 +85,8 @@ class SettingsPage(QtWidgets.QWidget):
         self._is_background_check = False
         self._test_thread = None
         self._test_worker = None
+        self._models_thread = None
+        self._models_worker = None
         self._current_language = None  # Track current language for revert
 
         self._pricing_refresh_timer: Optional[QTimer] = None
@@ -133,6 +159,12 @@ class SettingsPage(QtWidgets.QWidget):
         self.ui.check_update_button.clicked.connect(self.check_for_updates)
         self.ui.proxy_input.textChanged.connect(self._apply_proxy)
         self.ui.test_connection_button.clicked.connect(self.on_test_connection)
+        self.ui.custom_refresh_models_button.clicked.connect(self.on_refresh_models)
+        self.ui.custom_models_combo.activated.connect(self.on_model_selected)
+        # Typing in the free-form field clears the dropdown selection so it
+        # never silently overrides what the user just entered.
+        self.ui.credential_widgets["Custom_model"].textEdited.connect(
+            self._clear_model_combo)
         self._sync_extra_context_limit(self.ui.translator_combo.currentText())
 
     def _sync_extra_context_limit(self, translator: str) -> None:
@@ -238,6 +270,72 @@ class SettingsPage(QtWidgets.QWidget):
         self._test_thread = None
         self._test_worker = None
 
+    def _clear_model_combo(self) -> None:
+        """A manual model name wins over whatever the dropdown had selected."""
+        combo = self.ui.custom_models_combo
+        if combo.currentIndex() >= 0:
+            combo.blockSignals(True)
+            combo.setCurrentIndex(-1)
+            combo.blockSignals(False)
+
+    @Slot()
+    def on_model_selected(self) -> None:
+        """Copy a dropdown choice into the model field."""
+        combo = self.ui.custom_models_combo
+        text = combo.currentText().strip()
+        if text:
+            self.ui.credential_widgets["Custom_model"].setText(text)
+
+    @Slot()
+    def on_refresh_models(self) -> None:
+        """Ask the configured endpoint which models it serves."""
+        if self._models_thread is not None:
+            return
+
+        creds = self.get_credentials(self.ui.tr("Custom"))
+        base_url, note = resolve_endpoint(creds.get('api_url') or '', timeout=0.4)
+        if not base_url:
+            self.ui.test_connection_label.setText(
+                f"{note}. Set an Endpoint URL first.")
+            return
+
+        self._apply_proxy()
+        self.ui.custom_refresh_models_button.setEnabled(False)
+
+        worker = ModelListWorker(
+            base_url, creds.get('api_key') or '')
+        thread = QThread()
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self.on_models_loaded)
+        worker.finished.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(self._clear_models_refs)
+
+        self._models_worker = worker
+        self._models_thread = thread
+        thread.start()
+
+    @Slot(list, str)
+    def on_models_loaded(self, models: list, message: str) -> None:
+        """Slot for :class:`ModelListWorker`, always runs on the GUI thread."""
+        combo = self.ui.custom_models_combo
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItems(models)
+        combo.blockSignals(False)
+        self.ui.custom_refresh_models_button.setEnabled(True)
+        if models:
+            self.ui.test_connection_label.setText(
+                self.tr("Found {} model(s). Pick one above.").format(len(models)))
+        else:
+            self.ui.test_connection_label.setText(message)
+
+    @Slot()
+    def _clear_models_refs(self) -> None:
+        self._models_thread = None
+        self._models_worker = None
+
     def get_export_settings(self):
         owner = self.window()
         title_bar = getattr(owner, "title_bar", None)
@@ -272,9 +370,21 @@ class SettingsPage(QtWidgets.QWidget):
         if service:
             normalized = self.ui.value_mappings.get(service, service)
             creds = {'save_key': save_keys}
+            # Custom is the only service with more than an API key.
             if normalized == "Custom":
                 for field in ("api_key", "api_url", "model", "temperature"):
                     creds[field] = _text_or_none(f"Custom_{field}")
+                # Keep the model in sync with the dropdown while the user is
+                # still typing in the free-form field.
+                combo = self.ui.credential_widgets.get("Custom_models_combo")
+                if combo is not None and combo.currentText():
+                    creds['model'] = combo.currentText()
+                widget = self.ui.credential_widgets.get("Custom_supports_images")
+                creds['supports_images'] = bool(widget.isChecked()) if widget else False
+            else:
+                # Every other service just needs its own key, which is what
+                # lets the built-in engines run without an account.
+                creds['api_key'] = _text_or_none(f"{normalized}_api_key")
 
             return creds
 
@@ -413,12 +523,18 @@ class SettingsPage(QtWidgets.QWidget):
         if save_keys:
             for service, cred in credentials.items():
                 translated_service = self.ui.value_mappings.get(service, service)
-                
+
                 if translated_service == "Custom":
                     settings.setValue(f"{translated_service}_api_key", cred.get('api_key') or '')
                     settings.setValue(f"{translated_service}_api_url", cred.get('api_url') or '')
                     settings.setValue(f"{translated_service}_model", cred.get('model') or '')
                     settings.setValue(f"{translated_service}_temperature", cred.get('temperature') or '')
+                    settings.setValue(f"{translated_service}_supports_images",
+                                      bool(cred.get('supports_images')))
+                else:
+                    key = cred.get('api_key')
+                    if key:
+                        settings.setValue(f"{translated_service}_api_key", key)
         else:
             settings.remove('credentials')  # Clear all credentials if save_keys is unchecked
         settings.endGroup()
@@ -546,6 +662,12 @@ class SettingsPage(QtWidgets.QWidget):
                     self.ui.credential_widgets[f"{translated_service}_api_url"].setText(settings.value(f"{translated_service}_api_url", ''))
                     self.ui.credential_widgets[f"{translated_service}_model"].setText(settings.value(f"{translated_service}_model", ''))
                     self.ui.credential_widgets[f"{translated_service}_temperature"].setText(settings.value(f"{translated_service}_temperature", ''))
+                    self.ui.credential_widgets[f"{translated_service}_supports_images"].setChecked(
+                        settings.value(f"{translated_service}_supports_images", False, type=bool))
+                else:
+                    widget = self.ui.credential_widgets.get(f"{translated_service}_api_key")
+                    if widget is not None:
+                        widget.setText(settings.value(f"{translated_service}_api_key", ''))
         settings.endGroup()
 
         # Load network settings and push the proxy into the HTTP client

@@ -9,6 +9,7 @@ import requests
 from PySide6.QtCore import QObject, QSettings, Signal
 
 from app.account.config import API_BASE_URL
+from modules.utils import http_client
 from modules.utils.language_utils import language_codes
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ class ClientCatalog(QObject):
 
     def _refresh(self) -> None:
         try:
-            response = requests.get(f"{API_BASE_URL}/api/v1/client-catalog", timeout=5)
+            response = http_client.request("GET", f"{API_BASE_URL}/api/v1/client-catalog", timeout=5, retries=1)
             response.raise_for_status()
             catalog = response.json()
             if not self._is_valid(catalog):
