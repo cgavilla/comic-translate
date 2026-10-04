@@ -62,9 +62,13 @@ shown. Each label states what it costs:
 
 | Label suffix | Meaning |
 | --- | --- |
-| `(local, free)` | Runs on your machine. No key, no quota, works offline |
+| `(local, free)` | Runs on your machine. No key, no quota, no per-page cost |
 | `(your API key)` | Calls that provider directly. Paste your key in **Settings → Advanced** first |
 | `(free: local or hosted)` | `Custom`. Needs a reachable endpoint; the key may stay empty |
+
+The local engines download their model weights over HTTP the first time they
+run, then work offline from the cache. "Local" means no key and no per-request
+cost, not that a first run needs no network.
 
 Selecting a `(your API key)` entry without a key does **not** fail at
 selection time — it fails on the request, because only the engine knows. That
