@@ -33,9 +33,23 @@ language_codes = {
 
 _language_rendering: dict[str, dict[str, bool | str]] = {}
 
+# Layout behavior for the bundled target languages. Previously this came from
+# the remote catalog; these are the same rules, kept locally so text rendering
+# works with no server.
+BUNDLED_RENDERING: dict[str, dict[str, bool | str]] = {
+    "Arabic": {"direction": "rtl"},
+    "Hebrew": {"direction": "rtl"},
+    "Persian": {"direction": "rtl"},
+    "Chinese": {"no_space": True, "vertical": True},
+    "Simplified Chinese": {"no_space": True, "vertical": True},
+    "Traditional Chinese": {"no_space": True, "vertical": True},
+    "Japanese": {"no_space": True, "vertical": True},
+    "Thai": {"no_space": True},
+}
+
 
 def register_target_language(language: str, code: str, rendering: dict | None = None) -> None:
-    """Register catalog-provided target-language behavior for this session."""
+    """Register target-language layout behavior for this session."""
     language_codes[language] = code
     _language_rendering[language] = {
         "direction": "ltr",
@@ -43,6 +57,14 @@ def register_target_language(language: str, code: str, rendering: dict | None = 
         "vertical": False,
         **(rendering or {}),
     }
+
+
+def register_bundled_target_languages() -> None:
+    """Seed rendering rules for every language that ships with the app."""
+    for language, rendering in BUNDLED_RENDERING.items():
+        code = language_codes.get(language)
+        if code:
+            register_target_language(language, code, rendering)
 
 def get_layout_direction(language: str) -> Qt.LayoutDirection:
     rendering = _language_rendering.get(language, {})

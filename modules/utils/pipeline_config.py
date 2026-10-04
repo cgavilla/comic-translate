@@ -7,7 +7,6 @@ from modules.inpainting.mi_gan import MIGAN
 from modules.inpainting.aot import AOT
 from modules.inpainting.schema import Config
 from modules.utils.local_llm import resolve_endpoint
-from modules.ocr.user_ocr import UserOCR
 from app.ui.messages import Messages
 from app.ui.settings.settings_page import SettingsPage
 
@@ -19,34 +18,6 @@ inpaint_map = {
     "MI-GAN": MIGAN,
     "AOT": AOT,
 }
-
-# OCR options that are served by the user's account and therefore need a
-# session. Everything else is a local engine.
-ACCOUNT_OCR_KEYS = UserOCR.LLM_OCR_KEYS | UserOCR.FULL_PAGE_OCR_KEYS
-
-# Which credential service holds the user's own API key for each hosted
-# option. Supplying one of these lets the engine run without an account, so
-# signing in is never mandatory.
-OWN_KEY_SERVICES = {
-    "GPT-4.1": "Open AI GPT",
-    "GPT-4.1-mini": "Open AI GPT",
-    "Claude-4.6-Sonnet": "Anthropic Claude",
-    "Claude-4.5-Haiku": "Anthropic Claude",
-    "Gemini-3.1-Flash-Lite": "Google Gemini",
-    "Gemini-2.5-Pro": "Google Gemini",
-    "Deepseek": "Deepseek",
-    "Microsoft OCR": "Microsoft Azure",
-    "Gemini-2.5-Flash-Lite": "Google Gemini",
-}
-
-
-def has_own_key(settings_page: SettingsPage, option: str) -> bool:
-    """True when the user configured their own API key for ``option``."""
-    service = OWN_KEY_SERVICES.get(option)
-    if not service:
-        return False
-    creds = settings_page.get_credentials(settings_page.ui.tr(service))
-    return bool((creds.get('api_key') or '').strip())
 
 
 def get_inpainter_backend(inpainter_key: str) -> str:
@@ -67,11 +38,9 @@ def get_config(settings_page: SettingsPage):
 
 
 def validate_ocr(main: ComicTranslate):
-    """Ensure the selected OCR tool is usable.
+    """Ensure an OCR tool is selected.
 
-    The bundled local engines (default OCR, manga-ocr, Pororo...) run locally
-    and need no account. Only the remote options proxied through the user's
-    credits require a session.
+    Every OCR engine runs locally or against the user's own API key.
     """
     settings_page = main.settings_page
     settings = settings_page.get_all_settings()
@@ -81,17 +50,15 @@ def validate_ocr(main: ComicTranslate):
         Messages.show_missing_tool_error(main, QCoreApplication.translate("Messages", "Text Recognition model"))
         return False
 
-    if not settings_page.is_logged_in() and ocr_tool in ACCOUNT_OCR_KEYS:
-        # The user's own key needs no account.
-        if not has_own_key(settings_page, ocr_tool):
-            Messages.show_not_logged_in_error(main)
-            return False
-
     return True
 
 
 def validate_translator(main: ComicTranslate, target_lang: str):
-    """Ensure either API credentials are set or the user is authenticated, plus check compatibility."""
+    """Ensure a usable translator is configured.
+
+    Every translator is either a local model or driven by the user's own
+    API key, so there is no sign-in to perform.
+    """
     settings_page = main.settings_page
     tr = settings_page.ui.tr
     settings = settings_page.get_all_settings()
@@ -103,8 +70,7 @@ def validate_translator(main: ComicTranslate, target_lang: str):
         return False
 
     # Custom talks straight to the user's own endpoint - a local Ollama /
-    # LM Studio server or a hosted free OpenAI-compatible API. It needs neither
-    # a session nor credits, so it is checked before the login gate.
+    # LM Studio server or any hosted OpenAI-compatible API.
     if "Custom" in translator_tool:
         service = tr('Custom')
         creds = credentials.get(service, {})
@@ -116,14 +82,6 @@ def validate_translator(main: ComicTranslate, target_lang: str):
                                                    timeout=0.25)[0]:
             return True
         Messages.show_custom_not_configured_error(main)
-        return False
-
-    # A user who brought their own API key needs no account either.
-    if has_own_key(settings_page, translator_tool):
-        return True
-
-    if not settings_page.is_logged_in():
-        Messages.show_not_logged_in_error(main)
         return False
 
     return True

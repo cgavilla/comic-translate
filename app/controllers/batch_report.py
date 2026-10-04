@@ -102,8 +102,8 @@ class BatchReportController:
         lowered = summary.lower()
         if self._is_content_flagged_error_text(summary):
             return self.main.tr("The AI provider flagged this content")
-        if "insufficient credit" in lowered:
-            return self.main.tr("Insufficient credits")
+        if "insufficient credit" in lowered or "insufficient balance" in lowered:
+            return self.main.tr("Provider balance too low")
         if "timed out" in lowered or "timeout" in lowered:
             return self.main.tr("Request timed out")
         if (
@@ -155,8 +155,8 @@ class BatchReportController:
             ).lower():
                 return self.main.tr("Try another translator")
             return self.main.tr("Try another tool")
-        if "insufficient credit" in lowered:
-            return self.main.tr("Buy more credits")
+        if "insufficient credit" in lowered or "insufficient balance" in lowered:
+            return self.main.tr("Top up or use another provider")
         if "timed out" in lowered or "timeout" in lowered:
             return self.main.tr("Try again")
         if (

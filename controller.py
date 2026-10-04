@@ -33,7 +33,7 @@ from app.controllers.shortcuts import ShortcutController
 from app.controllers.task_runner import TaskRunnerController
 from app.controllers.batch_report import BatchReportController
 from app.controllers.manual_workflow import ManualWorkflowController
-from modules.utils.exceptions import InsufficientCreditsException, ContentFlaggedException
+from modules.utils.exceptions import ContentFlaggedException
 
 
 # Ensure any pre-declared mandatory models
@@ -511,10 +511,7 @@ class ComicTranslate(ComicTranslateUI):
         exctype, value, traceback_str = error_tuple
         
         # Handle specific exceptions
-        if exctype is InsufficientCreditsException:
-            Messages.show_insufficient_credits_error(self, details=str(value))
-            
-        elif exctype is ContentFlaggedException:
+        if exctype is ContentFlaggedException:
             err_msg = str(value)
             reason = err_msg.split(": ")[-1] if ": " in err_msg else err_msg
             context = getattr(value, 'context', 'Operation')

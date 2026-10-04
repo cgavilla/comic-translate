@@ -1,12 +1,11 @@
 # Free and local AI translation
 
-Comic Translate can translate with **no account, no credits and no API key**,
-using either a model running on your own machine or a hosted free tier.
+Comic Translate has **no account system**. There is nothing to sign up for,
+nothing to sign in to, and no credits anywhere in the app. Every translator and
+OCR engine either runs on your machine or talks to an endpoint using your own
+API key.
 
-This document describes what changed, how to configure it, and what the limits
-are.
-
-## Quick start (free, offline, no account)
+## Quick start (free, offline)
 
 1. Install [Ollama](https://ollama.com) and pull a multilingual model:
 
@@ -39,20 +38,27 @@ Anything speaking the OpenAI `/chat/completions` API works:
 Set the **Endpoint URL**, the **Model** and the **API Key** in
 **Settings → Advanced**.
 
-## No account required
+## What replaced the account system
 
-Nothing in the app demands an account. Signing in is optional, and only buys
-access to the hosted credits:
+| Removed | Replacement |
+| --- | --- |
+| `app/account/` (OAuth client, local server, token storage) | Nothing — there is no session |
+| `app/catalog.py` (remote translator/OCR/language list) | Static lists in `app/ui/settings/settings_ui.py` and `app/ui/main_window/constants.py` |
+| `modules/translation/user.py`, `modules/ocr/user_ocr.py` (credits proxy) | `modules/translation/factory.py` and `modules/ocr/factory.py` build every engine directly |
+| **Settings → Account** page | Nothing — its entries now live in **Settings → Advanced** as plain key fields |
+| `InsufficientCreditsException` | Gone; a provider that runs out of balance is just a normal error |
 
-- **Local models** - Custom translator, plus the bundled OCR engines.
-- **Hosted free tiers** - Custom translator pointed at Groq, OpenRouter, etc.
-- **Your own API keys** - Settings → Advanced exposes key fields for
-  **Open AI GPT**, **Anthropic Claude**, **Google Gemini**, **Deepseek** and
-  **Microsoft Azure**. With a key entered, those engines run without signing in.
+The catalog also used to supply per-language rendering rules (RTL, vertical,
+no-space). Those are now local constants in
+`modules/utils/language_utils.py` (`BUNDLED_RENDERING`), so Arabic, Hebrew,
+Persian, Chinese, Japanese and Thai still render correctly offline.
 
-The only remaining prompts ask for a session when a hosted credit option is
-selected *and* no key of your own is configured. The message says so and points
-at the alternatives.
+## Your own API keys
+
+**Settings → Advanced** exposes key fields for **Open AI GPT**,
+**Anthropic Claude**, **Google Gemini**, **Deepseek** and **Microsoft Azure**.
+Entering a key makes that engine work with no session and no proxy of ours
+involved — the request goes straight from your machine to the provider.
 
 ## HTTP proxy
 
@@ -61,9 +67,7 @@ at the alternatives.
 `HTTP_PROXY` / `ALL_PROXY` environment variables.
 
 - Every outbound call goes through `modules/utils/http_client.py`: all
-  translators, all OCR engines, the client catalog and the update check. The
-  only exception is the sign-in backend in `app/account/auth`, which is only
-  reached by people who choose to sign in.
+  translators, all OCR engines, and the update check.
 - **Local model servers are always contacted directly**, even when a proxy is
   configured. `requests` merges the environment with `proxies.setdefault()`, so
   loopback URLs are passed an explicit `{"http": None, "https": None}` mapping
@@ -91,38 +95,43 @@ one-token chat completion — the only way to catch a wrong model name before
 processing a whole comic. It runs off the UI thread and reports which endpoint
 it used.
 
-## Behaviour changes
+## Validation rules
 
-These affect the existing `Custom` translator, not just the free setup:
+`modules/utils/pipeline_config.py` is the whole gate. It refuses only two
+things, and neither involves an account:
 
-- **`Custom` no longer requires signing in.** It uses your own endpoint, so it
-  is validated before the login gate and consumes no credits.
-- **Local OCR engines no longer require signing in either.** The bundled
-  default OCR, manga-ocr and Pororo run on your machine, so they are allowed
-  while logged out. Only the remote options served through your credits
-  (Gemini-2.5-Flash-Lite and Microsoft OCR) still need a session. Without this,
-  OCR was validated *before* the translator and blocked the whole pipeline.
-- **The API Key became optional**; `api_url` and `model` alone are enough, and
-  an empty `api_url` is fine when a local server is running.
-- **Page images are no longer sent** to `Custom` by default. Most free and local
-  models are text-only and reject the `image_url` content part outright. Tick
-  **Endpoint accepts images** to opt back in.
+1. No OCR tool selected.
+2. Translator set to **Custom** with no reachable endpoint — the message says
+   to start a local server or point at a hosted free tier.
+
+Every other translator is accepted as-is; the request fails later, with the
+provider's own error, if the key is wrong.
+
+## Behaviour notes on `Custom`
+
+- **The API Key is optional**; `api_url` and `model` alone are enough, and an
+  empty `api_url` is fine when a local server is running.
+- **Page images are not sent** by default. Most free and local models are
+  text-only and reject the `image_url` content part outright. Tick **Endpoint
+  accepts images** to opt back in.
 - **`max_tokens` is sent instead of `max_completion_tokens`.** Local runtimes
   and older compatible servers only understand the legacy name; a `400` on the
   new name still falls back, so hosted OpenAI keeps working.
-- **Temperature defaults to `0.2` for `Custom`** and is configurable. At the old
-  hard-coded `1.0`, free models drift off the JSON format and lose the page.
+- **Temperature defaults to `0.2`**. At the old hard-coded `1.0`, free models
+  drift off the JSON format and lose the page. It is configurable.
 - **Malformed model output no longer raises.** Text blocks are re-parsed from
   fenced markdown, surrounding prose, smart quotes, trailing commas and Python
   literals; anything unusable is reported as a failed page instead of an
   exception.
 - **Requests retry** on 408/425/429/5xx with exponential backoff, honouring
   `Retry-After`. Free tiers rate-limit aggressively.
-- **Timeouts are longer for `Custom`** (300s), since CPU inference is slow.
+- **Timeouts are longer** (300s), since CPU inference is slow.
 - **A partially translated page is no longer thrown away.** Blocks already in
   the translation cache are reused and only the missing ones are sent, then
   merged back. A rate limit halfway through a page used to cost every block it
   had already finished.
+- **Engine caches key off the credentials**, so changing an API key rebuilds
+  the engine instead of leaving the previous one in place.
 
 ## Architecture
 
@@ -132,34 +141,19 @@ These affect the existing `Custom` translator, not just the free setup:
 | `modules/utils/local_llm.py` | Discovery of local servers, endpoint fallback, model selection |
 | `modules/translation/llm/custom.py` | Engine wiring: optional key, no image, auto endpoint/model |
 | `modules/translation/llm/gpt.py` | OpenAI-compatible request, conditional auth header, token-field fallback |
-| `modules/utils/pipeline_config.py` | Validates `Custom` before the login gate |
+| `modules/translation/factory.py` | Builds every engine directly; no proxy, no session |
+| `modules/utils/pipeline_config.py` | The only validation gate |
 | `modules/utils/translator_utils.py` | Relaxed JSON parsing of model responses |
+| `modules/utils/language_utils.py` | `BUNDLED_RENDERING` replaces the catalog's per-language rules |
 
 `Custom` inherits from `GPTTranslation`, so anything compatible with OpenAI
 needs no code — only configuration.
-
-## Verification
-
-Covered by integration tests against a fake OpenAI-compatible server and a
-fake HTTP proxy, both on loopback:
-
-- loopback bypasses the proxy while external hosts are routed through it
-- discovery of a server on Ollama's default port, and fallback when a saved
-  loopback URL is dead
-- a full translation with no API key, no session and no image attached
-- retry across a `429`, and `max_completion_tokens` → `max_tokens` fallback
-- JSON repair across fenced, prose-wrapped, and otherwise malformed responses
-- settings round-trip and the Test Connection success and failure paths
-- a logged-out user with local OCR and `Custom` passing the full pipeline
-  validation, while account-backed OCR and credit-based translators are still
-  refused
 
 ## Limitations
 
 - Credential fields persist only when **Save Keys** is enabled (pre-existing
   behaviour). The proxy persists regardless, as it is not a secret.
-- Only text is sent to `Custom` models. Vision-capable endpoints will not
-  receive the page image.
-- The proxy setting covers three translators; extending it to Gemini, Claude
-  and the OCR engines means routing their remaining call sites through
-  `http_client`.
+- The **Microsoft OCR** engine needs the optional `azure-ai-vision-imageanalysis`
+  package; choosing it without it gives an error naming what to install.
+- Adding or removing a translator or OCR engine is now a code change — there is
+  no server to publish a new option to.

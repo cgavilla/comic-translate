@@ -22,7 +22,7 @@ from modules.utils.language_utils import get_language_code, is_no_space_lang
 from modules.utils.translator_utils import get_raw_translation, get_raw_text, format_translations, is_renderable_translation
 from modules.rendering.render import get_best_render_area, pyside_word_wrap, is_vertical_block
 from modules.utils.device import resolve_device
-from modules.utils.exceptions import InsufficientCreditsException
+
 from app.path_materialization import ensure_path_materialized
 from app.ui.canvas.text_item import OutlineInfo, OutlineType
 from app.ui.canvas.text.text_item_properties import TextItemProperties
@@ -165,8 +165,6 @@ class BatchProcessor:
                     rtl = True if source_lang == 'Japanese' else False
                     blk_list = sort_blk_list(blk_list, rtl)
                     
-                except InsufficientCreditsException:
-                    raise
                 except Exception as e:
                     # if it's a connection/network error, give a short message
                     if isinstance(e, requests.exceptions.ConnectionError):
@@ -219,8 +217,6 @@ class BatchProcessor:
                 translator.translate(blk_list, image, extra_context)
                 # Cache the translation results for potential future use
                 self.cache_manager._cache_translation_results(translation_cache_key, blk_list)
-            except InsufficientCreditsException:
-                raise
             except Exception as e:
                 # if it's a connection/network error, give a short message
                 if isinstance(e, requests.exceptions.ConnectionError):

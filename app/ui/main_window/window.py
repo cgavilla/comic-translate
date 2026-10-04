@@ -13,7 +13,7 @@ from app.ui.list_view import PageListView
 from app.ui.settings.settings_page import SettingsPage
 from app.ui.startup_home import StartupHomeScreen
 from app.ui.title_bar import CustomTitleBar, RESIZE_MARGIN
-from modules.utils.language_utils import register_target_language
+from modules.utils.language_utils import register_bundled_target_languages
 from .builders import MainWindowBuildersMixin
 from .frame import EdgeResizer
 from .tools import ToolStateMixin
@@ -129,8 +129,6 @@ class ComicTranslateUI(
             self.tr("Mongolian"): "Mongolian",
         }
         self.reverse_lang_mapping = {v: k for k, v in self.lang_mapping.items()}
-        self.settings_page.catalog_updated.connect(self._apply_remote_catalog)
-
         self.button_to_alignment = {
             0: QtCore.Qt.AlignmentFlag.AlignLeft,
             1: QtCore.Qt.AlignmentFlag.AlignCenter,
@@ -138,7 +136,7 @@ class ComicTranslateUI(
         }
 
         self._init_ui()
-        self._apply_remote_catalog(self.settings_page.catalog.load())
+        register_bundled_target_languages()
         self._settings_resize_preview = QtWidgets.QLabel(self._center_stack)
         self._settings_resize_preview.setAttribute(
             QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
@@ -188,24 +186,6 @@ class ComicTranslateUI(
         self._set_document_tools_visible(False)
 
         self.main_layout.addWidget(self._center_stack)
-
-    def _apply_remote_catalog(self, catalog: dict) -> None:
-        """Catalog labels are native names; values remain canonical English."""
-        target_languages = [item for item in catalog.get("target_languages", [])
-                            if isinstance(item, dict) and item.get("value") and item.get("label")]
-        if not target_languages or not hasattr(self, "t_combo"):
-            return
-        current = self.t_combo.currentText()
-        labels = [item["label"] for item in target_languages]
-        for item in target_languages:
-            self.lang_mapping[item["label"]] = item["value"]
-            self.reverse_lang_mapping[item["value"]] = item["label"]
-            register_target_language(item["value"], item["code"], item.get("rendering"))
-        self.t_combo.blockSignals(True)
-        self.t_combo.clear()
-        self.t_combo.addItems(labels)
-        self.t_combo.setCurrentText(current if current in labels else labels[0])
-        self.t_combo.blockSignals(False)
 
     def _set_document_tools_visible(self, visible: bool) -> None:
         tools = [

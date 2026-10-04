@@ -10,8 +10,6 @@ from .llm.claude import ClaudeTranslation
 from .llm.gemini import GeminiTranslation
 from .llm.deepseek import DeepseekTranslation
 from .llm.custom import CustomTranslation
-from .user import UserTranslator
-from app.account.auth.token_storage import get_token
 
 
 class TranslationFactory:
@@ -24,9 +22,7 @@ class TranslationFactory:
         "Microsoft Translator": MicrosoftTranslation,
         "DeepL": DeepLTranslation,
         "Yandex": YandexTranslation
-    }
-    
-    # Map LLM identifiers to their engine classes
+    }# Map LLM identifiers to their engine classes
     LLM_ENGINE_IDENTIFIERS = {
         "GPT": GPTTranslation,
         "Claude": ClaudeTranslation,
@@ -34,12 +30,10 @@ class TranslationFactory:
         "Deepseek": DeepseekTranslation,
         "Custom": CustomTranslation
     }
-    
+
     DEFAULT_LLM_ENGINE = GPTTranslation
 
-    # Providers whose own API key can be entered in Settings > Advanced. When
-    # the user supplied one they are paying their own way, so their key must
-    # win over the account's credits.
+    # Credential service holding each translator's own API key.
     OWN_KEY_SERVICES = {
         "GPT": "Open AI GPT",
         "Claude": "Anthropic Claude",
@@ -69,11 +63,11 @@ class TranslationFactory:
             return cls._engines[cache_key]
         
         # Determine engine class and create engine
-        engine_class = cls._get_engine_class(settings, translator_key)
+        engine_class = cls._get_engine_class(translator_key)
         engine = engine_class()
         
         # Initialize with appropriate parameters
-        if translator_key not in cls.TRADITIONAL_ENGINES or isinstance(engine, UserTranslator):
+        if translator_key not in cls.TRADITIONAL_ENGINES:
             engine.initialize(settings, source_lang, target_lang, translator_key)
         else:
             engine.initialize(settings, source_lang, target_lang)
@@ -81,39 +75,20 @@ class TranslationFactory:
         # Cache the engine
         cls._engines[cache_key] = engine
         return engine
-    
 
     @classmethod
-    def _has_own_key(cls, settings, translator_key: str) -> bool:
-        """True when the user configured their own API key for this provider."""
-        for identifier, service in cls.OWN_KEY_SERVICES.items():
-            if identifier in translator_key:
-                creds = settings.get_credentials(settings.ui.tr(service))
-                if (creds.get('api_key') or '').strip():
-                    return True
-        return False
-
-    @classmethod
-    def _get_engine_class(cls, settings, translator_key: str):
+    def _get_engine_class(cls, translator_key: str):
         """Get the appropriate engine class based on translator key."""
-
-        access_token = get_token("access_token")
-        # The credits proxy only applies when the user has no key of their own.
-        # Routing around a supplied key is what turns a free setup into a
-        # login/credits prompt.
-        if access_token and translator_key not in ['Custom'] \
-                and not cls._has_own_key(settings, translator_key):
-            return UserTranslator
 
         # First check if it's a traditional translation engine (exact match)
         if translator_key in cls.TRADITIONAL_ENGINES:
             return cls.TRADITIONAL_ENGINES[translator_key]
-        
+
         # Otherwise look for matching LLM engine (substring match)
         for identifier, engine_class in cls.LLM_ENGINE_IDENTIFIERS.items():
             if identifier in translator_key:
                 return engine_class
-        
+
         # Default to LLM engine if no match found
         return cls.DEFAULT_LLM_ENGINE
     

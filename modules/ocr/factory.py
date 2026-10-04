@@ -2,7 +2,7 @@ import json
 import hashlib
 
 from modules.utils.device import resolve_device, torch_available
-from app.account.auth.token_storage import get_token
+
 from .base import OCREngine
 from .microsoft_ocr import MicrosoftOCR
 from .google_ocr import GoogleOCR
@@ -11,7 +11,6 @@ from .ppocr import PPOCRv5Engine
 from .manga_ocr.mobile import MangaOCRMobileONNXEngine
 from .pororo.onnx_engine import PororoOCREngineONNX  
 from .gemini_ocr import GeminiOCR
-from .user_ocr import UserOCR
 
 
 class OCRFactory:
@@ -59,18 +58,7 @@ class OCRFactory:
         if cache_key in cls._engines:
             return cls._engines[cache_key]
 
-        # 2) For account holders using a remote  model
-        token = get_token("access_token")
-        if token and not cls._has_own_key(settings, ocr_model) and (
-            ocr_model in UserOCR.LLM_OCR_KEYS
-            or ocr_model in UserOCR.FULL_PAGE_OCR_KEYS
-        ):
-            engine = UserOCR()
-            engine.initialize(settings, source_lang_english, ocr_model)
-            cls._engines[cache_key] = engine
-            return engine
-
-        # 3) otherwise fall back to the local factories
+        # 2) Build the engine for the selected option
         engine = cls._create_new_engine(settings, source_lang_english, ocr_model, effective_backend)
         cls._engines[cache_key] = engine
         return engine
@@ -147,22 +135,6 @@ class OCRFactory:
             "Gemini-2.5-Flash-Lite": "Google Gemini",
             "Microsoft OCR": "Microsoft Azure",
         }.get(ocr_model)
-
-    @classmethod
-    def _has_own_key(cls, settings, ocr_model: str) -> bool:
-        """True when the user configured their own key for this OCR provider.
-
-        A supplied key means they are paying their own way, so the account's
-        credits proxy must not swallow the request.
-        """
-        service = {
-            "Gemini-2.5-Flash-Lite": "Google Gemini",
-            "Microsoft OCR": "Microsoft Azure",
-        }.get(ocr_model)
-        if not service:
-            return False
-        creds = settings.get_credentials(settings.ui.tr(service))
-        return bool((creds.get('api_key') or '').strip())
 
     @classmethod
     def _resolve_backend(cls, backend: str | None = None) -> str:
