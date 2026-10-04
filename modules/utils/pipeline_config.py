@@ -6,6 +6,7 @@ from modules.inpainting.lama import LaMa
 from modules.inpainting.mi_gan import MIGAN
 from modules.inpainting.aot import AOT
 from modules.inpainting.schema import Config
+from modules.utils.local_llm import resolve_endpoint
 from app.ui.messages import Messages
 from app.ui.settings.settings_page import SettingsPage
 
@@ -66,21 +67,26 @@ def validate_translator(main: ComicTranslate, target_lang: str):
         Messages.show_missing_tool_error(main, QCoreApplication.translate("Messages", "Translator"))
         return False
 
+    # Custom talks straight to the user's own endpoint - a local Ollama /
+    # LM Studio server or a hosted free OpenAI-compatible API. It needs neither
+    # a session nor credits, so it is checked before the login gate.
+    if "Custom" in translator_tool:
+        service = tr('Custom')
+        creds = credentials.get(service, {})
+        # api_key is optional: local servers ignore it and free tiers differ.
+        # An empty api_url is fine too - a local server is auto-detected. This
+        # runs on the UI thread, so the discovery timeout is kept tight; a
+        # closed local port is refused immediately anyway.
+        if creds.get('model') and resolve_endpoint(creds.get('api_url'),
+                                                   timeout=0.25)[0]:
+            return True
+        Messages.show_custom_not_configured_error(main)
+        return False
+
     if not settings_page.is_logged_in():
         Messages.show_not_logged_in_error(main)
         return False
 
-    # Credential checks
-    if "Custom" in translator_tool:
-        # Custom requires api_key, api_url, and model to be configured LOCALLY
-        service = tr('Custom')
-        creds = credentials.get(service, {})
-        # Check if all required fields are present and non-empty
-        if not all([creds.get('api_key'), creds.get('api_url'), creds.get('model')]):
-            Messages.show_custom_not_configured_error(main)
-            return False
-        return True
-        
     return True
 
 def font_selected(main: ComicTranslate):

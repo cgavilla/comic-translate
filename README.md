@@ -124,6 +124,7 @@ uv run comic.py
 This will launch the GUI
 
 ### Tips
+* **Want free translation with no account and no API key?** Point the Custom translator at a local [Ollama](https://ollama.com) or LM Studio server, or at a hosted free tier like Groq or OpenRouter. See [Free and local AI translation](docs/free-local-translation.md).
 * CBR/RAR extraction requires a supported helper such as UnRAR, Unar, or 7-Zip. On Windows, install WinRAR or 7-Zip and add its folder (for example, `C:\Program Files\WinRAR`) to `PATH`. On macOS, the desktop app automatically checks standard Homebrew and MacPorts locations when launched from Finder. If no supported extraction tool is available, you may get the error:
 ```bash
 raise RarCannotExec("Cannot find working tool")

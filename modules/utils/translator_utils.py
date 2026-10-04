@@ -1,9 +1,12 @@
 import base64
 import json
+import logging
 import re
 import numpy as np
 from .textblock import TextBlock
 import imkit as imk
+
+logger = logging.getLogger(__name__)
 
 
 MODEL_MAP = {
@@ -42,21 +45,78 @@ def get_raw_translation(blk_list: list[TextBlock]):
     
     return raw_translations_json
 
-def set_texts_from_json(blk_list: list[TextBlock], json_string: str):
-    match = re.search(r"\{[\s\S]*\}", json_string)
-    if match:
-        # Extract the JSON string from the matched regular expression
-        json_string = match.group(0)
-        translation_dict = json.loads(json_string)
-        
-        for idx, blk in enumerate(blk_list):
-            block_key = f"block_{idx}"
-            if block_key in translation_dict:
-                blk.translation = translation_dict[block_key]
-            else:
-                print(f"Warning: {block_key} not found in JSON string.")
-    else:
-        print("No JSON found in the input string.")
+def _repair_json(text: str) -> str:
+    """Undo the syntax slips language models make most often.
+
+    Only ever applied after a strict parse failed, so it can be blunt.
+    """
+    repaired = text
+    # Smart quotes used as JSON delimiters
+    repaired = repaired.replace("\u201c", '"').replace("\u201d", '"')
+    # Python literals JSON does not accept
+    repaired = re.sub(r"\bNone\b", "null", repaired)
+    repaired = re.sub(r"\bTrue\b", "true", repaired)
+    repaired = re.sub(r"\bFalse\b", "false", repaired)
+    # Trailing commas before a closing brace or bracket
+    repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
+    return repaired
+
+
+def _loads_relaxed(response: str) -> dict | None:
+    """Parse the JSON an LLM returned for a batch of text blocks.
+
+    Free and local models wrap the object in prose or markdown, use smart
+    quotes, or leave a trailing comma. Each of those costs a whole page, so
+    try a few shapes before giving up.
+    """
+    candidates = [response.strip()]
+
+    fenced = re.search(r"```(?:json)?\s*([\s\S]*?)```", response, re.IGNORECASE)
+    if fenced:
+        candidates.append(fenced.group(1).strip())
+
+    # Prefer the outermost object when the response also contains commentary.
+    braced = re.search(r"\{[\s\S]*\}", response)
+    if braced:
+        candidates.append(braced.group(0))
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        for attempt in (candidate, _repair_json(candidate)):
+            try:
+                parsed = json.loads(attempt)
+            except (ValueError, TypeError):
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+    return None
+
+
+def set_texts_from_json(blk_list: list[TextBlock], json_string: str) -> bool:
+    """Apply the model's JSON translation back onto the blocks.
+
+    Returns False when nothing usable could be parsed, so the caller can report
+    the failure instead of silently rendering empty bubbles.
+    """
+    translation_dict = _loads_relaxed(json_string)
+    if translation_dict is None:
+        logger.warning("No JSON translation found in the model response")
+        return False
+
+    missing = 0
+    for idx, blk in enumerate(blk_list):
+        block_key = f"block_{idx}"
+        if block_key in translation_dict:
+            value = translation_dict[block_key]
+            blk.translation = value if isinstance(value, str) else str(value)
+        else:
+            missing += 1
+
+    if missing:
+        logger.warning("%d of %d blocks missing from the model response",
+                       missing, len(blk_list))
+    return missing < len(blk_list)
 
 def set_upper_case(blk_list: list[TextBlock], upper_case: bool):
     for blk in blk_list:

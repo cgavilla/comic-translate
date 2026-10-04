@@ -1,9 +1,9 @@
 from typing import Any
 import numpy as np
 import requests
-import json
 
 from .base import BaseLLMTranslation
+from ...utils import http_client
 from ...utils.translator_utils import MODEL_MAP
 
 
@@ -16,6 +16,9 @@ class GPTTranslation(BaseLLMTranslation):
         self.api_key = None
         self.api_base_url = "https://api.openai.com/v1"
         self.supports_images = True
+        # OpenAI renamed max_tokens to max_completion_tokens; local servers and
+        # hosted free tiers generally only understand the older name.
+        self.token_param = "max_completion_tokens"
     
     def initialize(self, settings: Any, source_lang: str, target_lang: str, model_name: str, **kwargs) -> None:
         """
@@ -47,9 +50,12 @@ class GPTTranslation(BaseLLMTranslation):
             Translated text
         """
         headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
+            "Content-Type": "application/json"
         }
+        # Local servers reject an empty bearer token, so only send it if a key
+        # was actually configured.
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
         
         if self.supports_images and self.img_as_llm_input:
             # Use the base class method to encode the image
@@ -84,33 +90,41 @@ class GPTTranslation(BaseLLMTranslation):
             "model": self.model,
             "messages": messages,
             "temperature": self.temperature,
-            "max_completion_tokens": self.max_tokens,
         }
 
         return self._make_api_request(payload, headers)
-    
+
     def _make_api_request(self, payload, headers):
         """
         Make API request and process response
         """
+        url = f"{self.api_base_url}/chat/completions"
+        body = {**payload, self.token_param: self.max_tokens}
+
         try:
-            response = requests.post(
-                f"{self.api_base_url}/chat/completions",
-                headers=headers,
-                data=json.dumps(payload),
-                timeout=self.timeout
+            response = http_client.request(
+                "POST", url, headers=headers, json_body=body, timeout=self.timeout
             )
-            
-            response.raise_for_status()
-            response_data = response.json()
-            
-            return response_data["choices"][0]["message"]["content"]
-        except requests.exceptions.RequestException as e:
+
+            if response.status_code == 400 and self.token_param != "max_tokens":
+                # Older OpenAI-compatible servers (llama.cpp, most local
+                # runtimes) only understand the legacy field name.
+                body = {k: v for k, v in body.items() if k != self.token_param}
+                body["max_tokens"] = self.max_tokens
+                response = http_client.request(
+                    "POST", url, headers=headers, json_body=body, timeout=self.timeout
+                )
+
+            if not response.ok:
+                raise RuntimeError(
+                    f"API request failed: {http_client.describe_error(response)}")
+
+            return response.json()["choices"][0]["message"]["content"]
+        except requests.RequestException as e:
             error_msg = f"API request failed: {str(e)}"
             if hasattr(e, 'response') and e.response is not None:
                 try:
-                    error_details = e.response.json()
-                    error_msg += f" - {json.dumps(error_details)}"
-                except:
+                    error_msg += f" - {http_client.describe_error(e.response)}"
+                except Exception:
                     error_msg += f" - Status code: {e.response.status_code}"
             raise RuntimeError(error_msg)

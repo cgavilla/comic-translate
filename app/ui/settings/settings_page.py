@@ -6,12 +6,14 @@ from dataclasses import asdict, is_dataclass
 import json
 
 from PySide6 import QtWidgets, QtGui
-from PySide6.QtCore import Signal, QSettings, QUrl, QTimer, Qt
+from PySide6.QtCore import Signal, QSettings, QUrl, QTimer, Qt, QThread, QObject, Slot
 from PySide6.QtGui import QFont, QFontDatabase, QDesktopServices
 
 from app.shortcuts import get_default_shortcuts
 from .settings_ui import SettingsPageUI
 from modules.utils.device import is_gpu_available
+from modules.utils import http_client
+from modules.utils.local_llm import resolve_endpoint
 from app.account.auth.auth_client import AuthClient, USER_INFO_GROUP, \
     EMAIL_KEY, TIER_KEY, CREDITS_KEY, MONTHLY_CREDITS_KEY
 from app.account.config import API_BASE_URL, FRONTEND_BASE_URL
@@ -21,6 +23,27 @@ from modules.utils.paths import get_user_data_dir, get_default_project_autosave_
 
 
 logger = logging.getLogger(__name__)
+
+
+class ConnectionTestWorker(QObject):
+    """Probes a translation endpoint off the UI thread."""
+
+    finished = Signal(bool, str, str)
+
+    def __init__(self, base_url: str, note: str, api_key: str, model: str):
+        super().__init__()
+        self.base_url = base_url
+        self.note = note
+        self.api_key = api_key
+        self.model = model
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            ok, message = http_client.probe(self.base_url, self.api_key, self.model)
+        except Exception as exc:  # never let the thread die silently
+            ok, message = False, f"Unexpected error: {exc}"
+        self.finished.emit(ok, self.note, message)
 
 
 class SettingsPage(QtWidgets.QWidget):
@@ -36,6 +59,8 @@ class SettingsPage(QtWidgets.QWidget):
         self._setup_connections()
         self._loading_settings = False
         self._is_background_check = False
+        self._test_thread = None
+        self._test_worker = None
         self._current_language = None  # Track current language for revert
 
         self._pricing_refresh_timer: Optional[QTimer] = None
@@ -106,6 +131,8 @@ class SettingsPage(QtWidgets.QWidget):
         self.ui.buy_credits_button.clicked.connect(self.open_pricing_page)
         self.ui.sign_out_button.clicked.connect(self.sign_out)
         self.ui.check_update_button.clicked.connect(self.check_for_updates)
+        self.ui.proxy_input.textChanged.connect(self._apply_proxy)
+        self.ui.test_connection_button.clicked.connect(self.on_test_connection)
         self._sync_extra_context_limit(self.ui.translator_combo.currentText())
 
     def _sync_extra_context_limit(self, translator: str) -> None:
@@ -144,6 +171,73 @@ class SettingsPage(QtWidgets.QWidget):
             'image_input_enabled': self.ui.image_checkbox.isChecked(),
         }
 
+    def get_network_settings(self) -> dict[str, str]:
+        return {
+            'proxy_url': self.ui.proxy_input.text().strip(),
+        }
+
+    def _apply_proxy(self) -> None:
+        """Push the current proxy value into the shared HTTP client.
+
+        An empty field restores the HTTPS_PROXY / HTTP_PROXY environment.
+        """
+        http_client.set_proxy(self.ui.proxy_input.text().strip())
+
+    def on_test_connection(self) -> None:
+        """Check the Custom endpoint end to end, before starting a batch.
+
+        Catches a wrong URL, a bad key or a missing model immediately instead
+        of after the first page has already been processed.
+        """
+        if self._test_thread is not None:
+            return
+
+        creds = self.get_credentials(self.ui.tr("Custom"))
+        base_url, note = resolve_endpoint(creds.get('api_url') or '')
+        if not base_url:
+            self.ui.test_connection_label.setText(self.tr(
+                "No endpoint to test. Start Ollama (ollama serve), or enter an "
+                "Endpoint URL for a hosted free API."))
+            return
+
+        self._apply_proxy()
+        self.ui.test_connection_button.setEnabled(False)
+        self.ui.test_connection_label.setText(self.tr("Testing..."))
+
+        worker = ConnectionTestWorker(
+            base_url, note, creds.get('api_key') or '', creds.get('model') or '')
+        thread = QThread()
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        # Connecting to a method of this QObject (which lives on the GUI
+        # thread) queues the call back onto the GUI thread, so widgets are
+        # never touched from the worker.
+        worker.finished.connect(self.on_test_finished)
+        worker.finished.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        # Deliberately not thread.deleteLater(): that would invalidate the C++
+        # object while self._test_thread still points at it, and any later
+        # access would abort the process. Clearing the reference here (on the
+        # GUI thread, after the thread has finished) lets Python own it.
+        thread.finished.connect(self._clear_test_refs)
+
+        # Keep Python references alive until the thread has finished.
+        self._test_worker = worker
+        self._test_thread = thread
+        thread.start()
+
+    @Slot(bool, str, str)
+    def on_test_finished(self, ok: bool, note: str, message: str) -> None:
+        """Slot for :class:`ConnectionTestWorker`, always runs on the GUI thread."""
+        self.ui.test_connection_button.setEnabled(True)
+        self.ui.test_connection_label.setText(f"{note}. {message}")
+
+    @Slot()
+    def _clear_test_refs(self) -> None:
+        """Drop the worker/thread references once the test thread has finished."""
+        self._test_thread = None
+        self._test_worker = None
+
     def get_export_settings(self):
         owner = self.window()
         title_bar = getattr(owner, "title_bar", None)
@@ -179,7 +273,7 @@ class SettingsPage(QtWidgets.QWidget):
             normalized = self.ui.value_mappings.get(service, service)
             creds = {'save_key': save_keys}
             if normalized == "Custom":
-                for field in ("api_key", "api_url", "model"):
+                for field in ("api_key", "api_url", "model", "temperature"):
                     creds[field] = _text_or_none(f"Custom_{field}")
 
             return creds
@@ -223,6 +317,7 @@ class SettingsPage(QtWidgets.QWidget):
                 'hd_strategy': self.get_hd_strategy_settings()
             },
             'llm': self.get_llm_settings(),
+            'network': self.get_network_settings(),
             'export': self.get_export_settings(),
             'shortcuts': self.ui.shortcuts_page.get_shortcuts(),
             'credentials': self.get_credentials(),
@@ -320,9 +415,10 @@ class SettingsPage(QtWidgets.QWidget):
                 translated_service = self.ui.value_mappings.get(service, service)
                 
                 if translated_service == "Custom":
-                    settings.setValue(f"{translated_service}_api_key", cred['api_key'])
-                    settings.setValue(f"{translated_service}_api_url", cred['api_url'])
-                    settings.setValue(f"{translated_service}_model", cred['model'])
+                    settings.setValue(f"{translated_service}_api_key", cred.get('api_key') or '')
+                    settings.setValue(f"{translated_service}_api_url", cred.get('api_url') or '')
+                    settings.setValue(f"{translated_service}_model", cred.get('model') or '')
+                    settings.setValue(f"{translated_service}_temperature", cred.get('temperature') or '')
         else:
             settings.remove('credentials')  # Clear all credentials if save_keys is unchecked
         settings.endGroup()
@@ -449,7 +545,14 @@ class SettingsPage(QtWidgets.QWidget):
                     self.ui.credential_widgets[f"{translated_service}_api_key"].setText(settings.value(f"{translated_service}_api_key", ''))
                     self.ui.credential_widgets[f"{translated_service}_api_url"].setText(settings.value(f"{translated_service}_api_url", ''))
                     self.ui.credential_widgets[f"{translated_service}_model"].setText(settings.value(f"{translated_service}_model", ''))
+                    self.ui.credential_widgets[f"{translated_service}_temperature"].setText(settings.value(f"{translated_service}_temperature", ''))
         settings.endGroup()
+
+        # Load network settings and push the proxy into the HTTP client
+        settings.beginGroup('network')
+        self.ui.proxy_input.setText(settings.value('proxy_url', '', type=str))
+        settings.endGroup()
+        self._apply_proxy()
 
         # ADDED: Load user info and update account view 
         self._load_user_info_from_settings()

@@ -104,14 +104,17 @@ class Messages:
     @staticmethod
     def show_custom_not_configured_error(parent):
         """
-        Show an error message when Custom is selected without proper configuration.
-        Guides users to use the Credits system instead.
+        Show an error message when Custom is selected without a usable endpoint.
+        Points at the free local-server route as well as the credits system.
         """
         MMessage.error(
             text=QCoreApplication.translate(
                 "Messages",
-                "Custom requires advanced API configuration. Most users should use the Credits system instead.\n"
-                "Please sign in via Settings > Account to use credits, or configure Custom API settings in Settings > Advanced."
+                "Custom needs a reachable endpoint and a model name.\n"
+                "For free translation without an account: start a local server "
+                "(Ollama: 'ollama serve'), then open Settings > Advanced and press "
+                "Test Connection. The API Key can stay empty.\n"
+                "Alternatively, sign in via Settings > Account to use credits."
             ),
             parent=parent,
             duration=None,

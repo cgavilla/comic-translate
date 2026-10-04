@@ -251,6 +251,12 @@ class SettingsPageUI(QtWidgets.QWidget):
         self.save_keys_checkbox = self.credentials_page.save_keys_checkbox
         self.credential_widgets = self.credentials_page.credential_widgets
 
+        # Network
+        self.proxy_input = self.credentials_page.proxy_input
+        self.network_widgets = self.credentials_page.network_widgets
+        self.test_connection_button = self.credentials_page.test_connection_button
+        self.test_connection_label = self.credentials_page.test_connection_label
+
         # LLMs
         self.image_checkbox = self.llms_page.image_checkbox
         self.extra_context = self.llms_page.extra_context

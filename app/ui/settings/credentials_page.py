@@ -2,6 +2,7 @@ from PySide6 import QtWidgets, QtCore
 from ..dayu_widgets.label import MLabel
 from ..dayu_widgets.line_edit import MLineEdit
 from ..dayu_widgets.check_box import MCheckBox
+from ..dayu_widgets.push_button import MPushButton
 from .utils import set_label_width
 
 class CredentialsPage(QtWidgets.QWidget):
@@ -113,6 +114,24 @@ class CredentialsPage(QtWidgets.QWidget):
                 service_layout.addWidget(model_input)
                 self.credential_widgets[f"{normalized}_model"] = model_input
 
+                temperature_input = MLineEdit()
+                temperature_input.setFixedWidth(400)
+                temperature_input.setPlaceholderText("0.2")
+                temperature_prefix = MLabel(self.tr("Temperature")).border()
+                set_label_width(temperature_prefix)
+                temperature_prefix.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                temperature_input.set_prefix_widget(temperature_prefix)
+                service_layout.addWidget(temperature_input)
+                self.credential_widgets[f"{normalized}_temperature"] = temperature_input
+
+                service_hint = MLabel(self.tr(
+                    "Leave the API Key empty for a local server. If the Endpoint URL is "
+                    "empty, a local server (Ollama, LM Studio) is detected automatically "
+                    "and its first model is used."
+                )).secondary()
+                service_hint.setWordWrap(True)
+                service_layout.addWidget(service_hint)
+
             elif normalized == "Yandex":
                 api_key_input = MLineEdit()
                 api_key_input.setEchoMode(QtWidgets.QLineEdit.Password)
@@ -147,5 +166,40 @@ class CredentialsPage(QtWidgets.QWidget):
             content_layout.addLayout(service_layout)
             content_layout.addSpacing(20)
 
+        content_layout.addLayout(self._build_network_section())
+        content_layout.addSpacing(20)
+
         content_layout.addStretch(1)
         main_layout.addLayout(content_layout)
+
+    def _build_network_section(self) -> QtWidgets.QVBoxLayout:
+        """Proxy settings for the Custom translator's outbound calls."""
+        section = QtWidgets.QVBoxLayout()
+        section.addWidget(MLabel(self.tr("Network")).strong())
+
+        hint = MLabel(self.tr(
+            "Route Custom and OpenAI-compatible API requests through an HTTP proxy. "
+            "Leave empty to use the HTTPS_PROXY / HTTP_PROXY environment variables. "
+            "Local model servers are always connected to directly, so this only "
+            "affects hosted APIs."
+        )).secondary()
+        hint.setWordWrap(True)
+        section.addWidget(hint)
+
+        self.proxy_input = MLineEdit()
+        self.proxy_input.setFixedWidth(400)
+        self.proxy_input.setPlaceholderText("http://127.0.0.1:8080")
+        proxy_prefix = MLabel(self.tr("Proxy")).border()
+        set_label_width(proxy_prefix)
+        proxy_prefix.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.proxy_input.set_prefix_widget(proxy_prefix)
+        section.addWidget(self.proxy_input)
+        self.network_widgets = {"proxy_url": self.proxy_input}
+
+        self.test_connection_button = MPushButton(self.tr("Test Connection"))
+        self.test_connection_label = MLabel("").secondary()
+        self.test_connection_label.setWordWrap(True)
+        section.addWidget(self.test_connection_button)
+        section.addWidget(self.test_connection_label)
+
+        return section
