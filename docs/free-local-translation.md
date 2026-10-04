@@ -53,6 +53,48 @@ no-space). Those are now local constants in
 `modules/utils/language_utils.py` (`BUNDLED_RENDERING`), so Arabic, Hebrew,
 Persian, Chinese, Japanese and Thai still render correctly offline.
 
+## Reading the tool lists
+
+Since the catalog is gone, the translator and OCR lists live in
+`app/ui/settings/settings_ui.py` as `(canonical key, label)` pairs. The **key**
+is what `MODEL_MAP` and the factories resolve; the **label** is only ever
+shown. Each label states what it costs:
+
+| Label suffix | Meaning |
+| --- | --- |
+| `(local, free)` | Runs on your machine. No key, no quota, works offline |
+| `(your API key)` | Calls that provider directly. Paste your key in **Settings → Advanced** first |
+| `(free: local or hosted)` | `Custom`. Needs a reachable endpoint; the key may stay empty |
+
+Selecting a `(your API key)` entry without a key does **not** fail at
+selection time — it fails on the request, because only the engine knows. That
+is why the marker is on the label.
+
+Because the key is stored as combo item data, saved configurations from older
+versions still load: they hold bare keys like `GPT-4.1`, not labels.
+
+### OCR engines
+
+`Default` routes by source language and is the safest choice. The others can
+be forced explicitly, which is useful when a page's language is misdetected:
+
+| Engine | Notes |
+| --- | --- |
+| `Default` | Picks manga-ocr for Japanese, PP-OCR for everything else |
+| `Manga OCR` | Japanese only |
+| `Pororo OCR` | Korean and Japanese |
+| `PP-OCR` | Forced to the Latin bucket — correct for European scripts |
+| `Microsoft OCR` | Needs Azure; the SDK is an optional dependency |
+| `Gemini-2.5-Flash-Lite` | Uses vision, so it needs your Gemini key |
+
+### A note on the model names
+
+The bundled names were frozen when the catalog was last reachable and are **not
+kept in sync with provider lineups**. `GPT-4.1`, `Claude-4.6-Sonnet`,
+`Gemini-3.1-Flash-Lite` and `Deepseek` are provider-specific and go stale.
+Anything OpenAI-compatible — including current hosted models and every free
+tier — works through `Custom` without a code change.
+
 ## Your own API keys
 
 **Settings → Advanced** exposes key fields for **Open AI GPT**,

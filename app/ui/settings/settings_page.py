@@ -117,7 +117,10 @@ class SettingsPage(QtWidgets.QWidget):
         self._sync_extra_context_limit(self.ui.translator_combo.currentText())
 
     def _sync_extra_context_limit(self, translator: str) -> None:
-        normalized = self.ui.reverse_mappings.get(translator, translator)
+        # Item data holds the canonical key; the label may carry a hint.
+        combo = self.ui.translator_combo
+        canonical = combo.currentData() or translator
+        normalized = self.ui.reverse_mappings.get(canonical, canonical)
         self.ui.llms_page.set_extra_context_unlimited(normalized == "Custom")
 
     def on_theme_changed(self, theme: str):

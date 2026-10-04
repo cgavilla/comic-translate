@@ -19,6 +19,18 @@ def create_title_and_combo(title: str, options: list[str], h4: bool = True) -> t
     v.addWidget(combo)
     return w, combo
 
+
+def set_combo_item_keys(combo: MComboBox, keys: list[str]) -> None:
+    """Attach the canonical protocol key of every item as its item data.
+
+    Callers that pick the tool read ``currentData()`` first, so the visible
+    label stays free to carry hints like "(your API key)" without changing how
+    a model is resolved.
+    """
+    for index, key in enumerate(keys):
+        if index < combo.count():
+            combo.setItemData(index, key)
+
 def set_combo_box_width(combo_box: MComboBox, items: list[str], padding: int = 40) -> None:
     """Set a fixed width on a combo box based on the widest item."""
     metrics = QFontMetrics(combo_box.font())

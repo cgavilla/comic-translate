@@ -16,7 +16,7 @@ from .project_page import ProjectPage
 from .export_page import ExportPage
 from .shortcuts_page import ShortcutsPage
 from .about_page import AboutPage
-from .utils import set_combo_box_width
+from .utils import set_combo_box_width, set_combo_item_keys
 
 
 class CurrentPageStack(QtWidgets.QStackedWidget):
@@ -55,11 +55,22 @@ class SettingsPageUI(QtWidgets.QWidget):
 
         self.inpainters = ['LaMa', 'AOT']
         self.detectors = ['RT-DETR-v2']
-        self.ocr_engines = [
-            self.tr("Default"), 
-            self.tr('Microsoft OCR'), 
-            self.tr('Gemini-2.5-Flash-Lite'), 
+
+        # (canonical key, label). The key is what the factories and MODEL_MAP
+        # resolve; the label is only ever shown. Anything needing the user's
+        # own API key is marked in place, because picking one without a key
+        # fails later at request time with no explanation.
+        self.ocr_engine_entries = [
+            ("Default", self.tr("Default (local, free)")),
+            ("Manga OCR", self.tr("Manga OCR (local, free)")),
+            ("Pororo OCR", self.tr("Pororo OCR (local, free)")),
+            ("PP-OCR", self.tr("PP-OCR (local, free)")),
+            ("Microsoft OCR", self.tr("Microsoft OCR (your API key)")),
+            ("Gemini-2.5-Flash-Lite", self.tr("Gemini-2.5-Flash-Lite (your API key)")),
         ]
+        self.ocr_engine_keys = [key for key, _ in self.ocr_engine_entries]
+        self.ocr_engines = [label for _, label in self.ocr_engine_entries]
+
         self.inpaint_strategy = [self.tr('Resize'), self.tr('Original'), self.tr('Crop')]
         self.themes = [self.tr('Dark'), self.tr('Light')]
         self.alignment = [self.tr("Left"), self.tr("Center"), self.tr("Right")]
@@ -72,16 +83,18 @@ class SettingsPageUI(QtWidgets.QWidget):
             self.tr("Deepseek"),
             self.tr("Microsoft Azure"),
         ]
-        
-        self.supported_translators = [
-            self.tr("Gemini-3.1-Flash-Lite"),
-            self.tr("GPT-4.1"),
-            self.tr("GPT-4.1-mini"),
-            self.tr("Claude-4.6-Sonnet"),
-            self.tr("Claude-4.5-Haiku"),
-            self.tr("Deepseek"),
-            self.tr("Custom"),
+
+        self.translator_entries = [
+            ("Gemini-3.1-Flash-Lite", self.tr("Gemini-3.1-Flash-Lite (your API key)")),
+            ("GPT-4.1", self.tr("GPT-4.1 (your API key)")),
+            ("GPT-4.1-mini", self.tr("GPT-4.1-mini (your API key)")),
+            ("Claude-4.6-Sonnet", self.tr("Claude-4.6-Sonnet (your API key)")),
+            ("Claude-4.5-Haiku", self.tr("Claude-4.5-Haiku (your API key)")),
+            ("Deepseek", self.tr("Deepseek (your API key)")),
+            ("Custom", self.tr("Custom (free: local or hosted)")),
         ]
+        self.translator_keys = [key for key, _ in self.translator_entries]
+        self.supported_translators = [label for _, label in self.translator_entries]
         
         self.languages = [
             'English', 
@@ -208,6 +221,10 @@ class SettingsPageUI(QtWidgets.QWidget):
         # Tools
         self.translator_combo = self.tools_page.translator_combo
         self.ocr_combo = self.tools_page.ocr_combo
+        # Canonical protocol keys, so a label can carry a hint without
+        # changing how the choice is resolved downstream.
+        set_combo_item_keys(self.translator_combo, self.translator_keys)
+        set_combo_item_keys(self.ocr_combo, self.ocr_engine_keys)
         self.detector_combo = self.tools_page.detector_combo
         self.inpainter_combo = self.tools_page.inpainter_combo
         self.inpaint_strategy_combo = self.tools_page.inpaint_strategy_combo

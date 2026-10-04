@@ -156,10 +156,15 @@ class OCRFactory:
         
         # Model-specific factory functions
         general = {
-            'Microsoft OCR': cls._create_microsoft_ocr,
-            'Google Cloud Vision': cls._create_google_ocr,
-            'GPT-4.1-mini': lambda s: cls._create_gpt_ocr(s, ocr_model),
-            'Gemini-2.5-Flash-Lite': lambda s: cls._create_gemini_ocr(s, ocr_model),
+            'Microsoft OCR': lambda s, b: cls._create_microsoft_ocr(s),
+            'Google Cloud Vision': lambda s, b: cls._create_google_ocr(s),
+            'GPT-4.1-mini': lambda s, b: cls._create_gpt_ocr(s, ocr_model),
+            'Gemini-2.5-Flash-Lite': lambda s, b: cls._create_gemini_ocr(s, ocr_model),
+            # Explicitly selectable local engines. "Default" still routes by
+            # source language; these force one engine regardless of language.
+            'Manga OCR': lambda s, b: cls._create_manga_ocr(s, b),
+            'Pororo OCR': lambda s, b: cls._create_pororo_ocr(s, b),
+            'PP-OCR': lambda s, b: cls._create_ppocr_default(s, b),
         }
         
         make_japanese = lambda s: cls._create_manga_ocr(s, effective_backend)
@@ -200,7 +205,7 @@ class OCRFactory:
 
         # Check if we have a specific model factory
         if ocr_model in general:
-            return general[ocr_model](settings)
+            return general[ocr_model](settings, effective_backend)
         
         # For Default, use language-specific engines
         if ocr_model == 'Default' and source_lang_english in language_factories:
@@ -261,6 +266,15 @@ class OCRFactory:
         
         return engine
     
+    @staticmethod
+    def _create_ppocr_default(settings, backend: str = 'onnx') -> OCREngine:
+        """PP-OCR picked by hand instead of by source language.
+
+        Latin is the bucket every European script routes to, so it is the
+        safest choice when the source language is not known.
+        """
+        return OCRFactory._create_ppocr(settings, 'latin', backend)
+
     @staticmethod
     def _create_ppocr(settings, lang: str, backend: str = 'onnx') -> OCREngine:
         device = resolve_device(settings.is_gpu_enabled(), backend)
