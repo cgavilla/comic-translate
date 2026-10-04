@@ -1,13 +1,10 @@
 import os, shutil
-import socket
-from typing import Any, Optional
 import logging
 from dataclasses import asdict, is_dataclass
-import json
 
 from PySide6 import QtWidgets, QtGui
-from PySide6.QtCore import Signal, QSettings, QUrl, Qt, QThread, QObject, Slot
-from PySide6.QtGui import QFont, QFontDatabase, QDesktopServices
+from PySide6.QtCore import Signal, QSettings, Qt, QThread, QObject, Slot
+from PySide6.QtGui import QFont, QFontDatabase
 
 from app.shortcuts import get_default_shortcuts
 from .settings_ui import SettingsPageUI
