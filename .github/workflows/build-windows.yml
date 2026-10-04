@@ -1,0 +1,51 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build app with PyInstaller
+        run: python -m PyInstaller ct-win.spec --noconfirm
+
+      - name: Smoke test the executable
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $proc = Start-Process -FilePath 'dist\ComicTranslate\ComicTranslate.exe' -PassThru
+          Start-Sleep -Seconds 30
+          if ($proc.HasExited) {
+            Write-Error "ComicTranslate.exe exited during startup (code $($proc.ExitCode))"
+            exit 1
+          }
+          Write-Host "ComicTranslate.exe stayed running for 30s: startup OK"
+          Stop-Process -Id $proc.Id -Force
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v6
+        with:
+          name: Comic-Translate-Windows
+          path: 'dist/ComicTranslate'
+          if-no-files-found: error
+          retention-days: 30

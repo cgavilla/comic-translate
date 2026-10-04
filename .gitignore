@@ -24,3 +24,7 @@ demo_*.py
 benchmarks/
 
 scripts
+
+# PyInstaller output
+/build/
+/dist/
